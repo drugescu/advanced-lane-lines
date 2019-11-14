@@ -46,14 +46,15 @@ I have used composed gradient and color space thresholding to create a `combine_
 * `mag_threshold()` for magnitude thresholding with `30` to `100` thresholds
 * `dir_threshold()` for direction of threshold with thresholds `0.7` to `1.3`
 * `combine_thresholds()` which combines the above by `AND`ing `x` and `y` gradients, `AND`ing magnitude and direction, and `OR`ing the result
+* ignoring the above and simply doing an `x` sobel with `20` to `255` gradients
 
 Example:
 ![image3](output_images/gradient_thresholding.jpg "Binary Example - Gradient Thresholding")
 
 For the color space I've worked on the HLS space with:
 
-* `hls_sthreshold` with thresholds of `90` to `255` for the saturation channel
-* `hls_lthreshold` with thresholds of `220` to `255` for the lightness channel
+* `hls_sthreshold` with thresholds of `120` to `255` for the saturation channel
+* `hls_lthreshold` with thresholds of `40` to `255` for the lightness channel
 * `combine_color_thresholds` with `OR`ing the above
 
 This worked a little better for the challenge but messed up the basic video. I've finally taken out the `hls_lthreshold` completely to make it work properly for the obligatory video. This messed up the challenge completely.
@@ -75,7 +76,7 @@ I've saved the inverse transform when using the `cv2.getPerspectiveTransform` fo
 
 #### Lane pixels identification
 
-I've used the lesson examples to identify the pixels. When there is no prior data, I use the `fit_polynomial` function as demonstrated in lesson 7. I've used `nwindows = 12`, `margin = 80` and `minpix = 45` to fit windows and lines. We start by doing a histogram of the bottom part of the image, selecting the points of maximum frequency and starting to identify the pixels from that point on upward. Finally ,we fit a second degree polynomial to the identified boxe average positions.
+I've used the lesson examples to identify the pixels. When there is no prior data, I use the `fit_polynomial` function as demonstrated in lesson 7. I've used `nwindows = 10`, `margin = 150` and `minpix = 50` to fit windows and lines. We start by doing a histogram of the bottom part of the image, selecting the points of maximum frequency and starting to identify the pixels from that point on upward. Finally ,we fit a second degree polynomial to the identified boxe average positions.
 
 When there is at least one such result, we look to the right and to the left of the respective polynomial insid a region of `+/- margin` pixels around them as can be demonstrated in the result picture:
 
@@ -87,7 +88,7 @@ The `search_around_poly()` function then gets previous line fits and outputs fut
 
 #### Curvature and Offset
 
-I've used the methods discussed in the lessons to identify curvature and offset inside the `measure_curvature_real()` and `measure_offset()` functions. Curvature was calculated with the `R_curve` formula and received the polynomial fits as inputs. Results from the final images will show values of curvature of about `8000 m+` for straight lines and `1700 m` for the curve which is described to be around `1 km` meaning it fits the data rather well. I've used the calibration of `3.7 m` per lane, at about `770 px`  per lane (horizontally) and `25 m` per region for `720 px` longitudinally.
+I've used the methods discussed in the lessons to identify curvature and offset inside the `measure_curvature_real()` and `measure_offset()` functions. Curvature was calculated with the `R_curve` formula and received the polynomial fits as inputs. Results from the final images will show values of curvature of about `8000 m+` for straight lines and `900-1000 m` for the curve which is described to be around `1 km` meaning it fits the data rather well. I've used the calibration of `3.7 m` per lane, at about `770 px`  per lane (horizontally) and `40 m` per region for `600 px` longitudinally. I noticed that on very curvy portions of the road the right-most curve went outside the screen so I readjusted the horizontal calibration to `650 px`  instead of `770` and this was better.
 
 The offset is measured as compared to the center of the image and using the fit lines. The bottom line of the image is inserted as `y` int the line fits to get the corresponding `x`s in the `poly` function, which are then averaged. This is the actual center of the lane. The difference between this and the middle of the picture, corrected for mapping `px` to `m` is the offset in meters.
 
@@ -106,6 +107,28 @@ The final result is the polygon warped back onto the original mage by using the 
 #### 1. Provide a link to your final video output.  Your pipeline should perform reasonably well on the entire project video (wobbly lines are ok but no catastrophic failures that would cause the car to drive off the road!).
 
 Here's a ![link to my video result](project_video_output.mp4 "Video")
+
+I've done some of the more advanced suggestions:
+
+* I've used morphology changes to shrink regions of small amounts of pixels and let contiguous regions be more visible (on the binary masks) using:
+
+```
+kernel = np.ones((9, 9), np.uint8)
+combined = cv2.morphologyEx(combined.astype(np.uint8), cv2.MORPH_CLOSE, kernel)
+```
+
+* Advanced CLAHE brightness histogram equalisation in the pipeline (inspired by https://docs.opencv.org/3.1.0/d5/daf/tutorial_py_histogram_equalization.html and https://stackoverflow.com/questions/56905592/automatic-contrast-and-brightness-adjustment-of-a-color-photo-of-a-sheet-of-pape, using:
+
+```
+lab = cv2.cvtColor(imgw, cv2.COLOR_RGB2LAB)
+    lab_planes = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit = 2.0, tileGridSize = (8,8))
+    lab_planes[0] = clahe.apply(lab_planes[0])
+    lab = cv2.merge(lab_planes)
+    imgw = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+```
+
+* Adaptive search around poly, if curvatures are less than `250 m`, or curvatures are highly uneven with `unfit_curves` or if no detections have been made. One failure is enough to trigger window fitting once again.
 
 ---
 
